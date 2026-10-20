@@ -12,6 +12,12 @@ O projeto é dividido em camadas independentes e desacopladas, garantindo que as
 
 ```mermaid
 flowchart TB
+    subgraph Web["Camada Web (src/web + public)"]
+        UI["Interface Web (HTML/CSS/JS)"]
+        Express["Servidor Express + Rotas REST (/api/*)"]
+        MW["Middleware de Autenticação (Bearer Token)"]
+    end
+
     subgraph Aplicacao["Camada de Aplicação (src/aplicacao)"]
         UC_Auth["CasoDeUsoAutenticacao"]
         UC_Barb["GerenciadorBarbeiros"]
@@ -42,6 +48,9 @@ flowchart TB
         Memoria["Implementações em Memória"]
     end
 
+    UI <-->|HTTP JSON| Express
+    Express --> MW
+    MW --> Aplicacao
     Aplicacao --> Dominio
     Aplicacao --> Autenticacao
     Aplicacao --> Contratos
@@ -328,12 +337,24 @@ BarberShopManager/
 │   │   ├── GerenciadorFechamento.ts # Extrato individual e fechamento mensal geral
 │   │   └── index.ts
 │   │
+│   ├── web/                         # Servidor HTTP Express e API REST
+│   │   ├── criarApp.ts              # Definição das rotas /api/* e servidor estático
+│   │   ├── middlewareAutenticacao.ts # Validação de Bearer Token e NivelAcesso
+│   │   ├── seedInicial.ts           # Dados iniciais de demonstração
+│   │   ├── serializadores.ts        # Formatação de entidades para JSON
+│   │   └── index.ts
+│   │
 │   ├── testes/                      # Testes Automatizados (Node Test Runner)
 │   │   ├── dominio.test.ts          # Testes de Dinheiro, Barbeiro, OS, Snapshot e Extrato
 │   │   ├── autenticacao.test.ts     # Testes de Hash, Token JWT e ServicoAutenticacao
-│   │   └── aplicacao.test.ts        # Testes integrados de Casos de Uso e Permissões
+│   │   ├── aplicacao.test.ts        # Testes integrados de Casos de Uso e Permissões
+│   │   └── web.test.ts              # Testes de integração das rotas HTTP da API
 │   │
-│   └── index.ts                     # Ponto de entrada com simulação completa do fluxo
+│   └── index.ts                     # Inicialização do Servidor Web (porta 3000)
+├── public/                          # Interface Web Responsiva (Frontend)
+│   ├── index.html                   # Telas de Login, Lançamento e Painel do Gestor
+│   ├── styles.css                   # Estilização tema Barbearia
+│   └── app.js                       # Lógica de interação com a API REST
 ├── package.json
 └── tsconfig.json
 ```
