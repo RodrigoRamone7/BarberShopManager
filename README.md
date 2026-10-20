@@ -328,6 +328,11 @@ BarberShopManager/
 │   │   ├── GerenciadorFechamento.ts # Extrato individual e fechamento mensal geral
 │   │   └── index.ts
 │   │
+│   ├── testes/                      # Testes Automatizados (Node Test Runner)
+│   │   ├── dominio.test.ts          # Testes de Dinheiro, Barbeiro, OS, Snapshot e Extrato
+│   │   ├── autenticacao.test.ts     # Testes de Hash, Token JWT e ServicoAutenticacao
+│   │   └── aplicacao.test.ts        # Testes integrados de Casos de Uso e Permissões
+│   │
 │   └── index.ts                     # Ponto de entrada com simulação completa do fluxo
 ├── package.json
 └── tsconfig.json
@@ -353,7 +358,12 @@ npm run build
 npm start
 ```
 
-### 4. Verificar tipagem TypeScript
+### 4. Executar testes automatizados
+```bash
+npm test
+```
+
+### 5. Verificar tipagem TypeScript
 ```bash
 npm run typecheck
 ```
