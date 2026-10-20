@@ -1,0 +1,5 @@
+export enum NivelAcesso {
+  ADMINISTRADOR = "ADMINISTRADOR",
+  GESTOR = "GESTOR",
+  OPERADOR = "OPERADOR",
+}
