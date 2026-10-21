@@ -12,9 +12,9 @@ O projeto é dividido em camadas independentes e desacopladas, garantindo que as
 
 ```mermaid
 flowchart TB
-    subgraph Web["Camada Web (src/web + public)"]
-        UI["Interface Web (HTML/CSS/JS)"]
-        Express["Servidor Express + Rotas REST (/api/*)"]
+    subgraph Web["Camada Web (frontend React + Tailwind / src/web Express)"]
+        UI["Frontend SPA (React + Tailwind CSS)"]
+        Express["Servidor Express (0.0.0.0:3000) + Rotas REST (/api/*)"]
         MW["Middleware de Autenticação (Bearer Token)"]
     end
 
@@ -45,15 +45,17 @@ flowchart TB
 
     subgraph Repositorios["Camada de Repositórios (src/repositorios)"]
         Contratos["Interfaces / Contratos"]
+        SQLite[" Persistência Local SQLite (dados/barbearia.sqlite)"]
         Memoria["Implementações em Memória"]
     end
 
-    UI <-->|HTTP JSON| Express
+    UI <-->|HTTP JSON via Wi-Fi / LAN| Express
     Express --> MW
     MW --> Aplicacao
     Aplicacao --> Dominio
     Aplicacao --> Autenticacao
     Aplicacao --> Contratos
+    SQLite -.->|implementa| Contratos
     Memoria -.->|implementa| Contratos
     Autenticacao --> Dominio
 ```
@@ -321,6 +323,12 @@ BarberShopManager/
 │   │
 │   ├── repositorios/                # Contratos de Persistência e Implementações
 │   │   ├── contratos.ts             # Interfaces dos repositórios
+│   │   ├── sqlite/                  # Persistência Relacional Local (node:sqlite)
+│   │   │   ├── BancoSqlite.ts       # Inicialização WAL, Foreign Keys e Tabelas SQL
+│   │   │   ├── RepositorioPessoaSqlite.ts
+│   │   │   ├── RepositorioCredencialSqlite.ts
+│   │   │   ├── RepositorioServicoSqlite.ts
+│   │   │   └── RepositorioOrdemServicoSqlite.ts
 │   │   ├── memoria/                 # Implementações em memória (Map)
 │   │   │   ├── RepositorioPessoaMemoria.ts
 │   │   │   ├── RepositorioCredencialMemoria.ts
@@ -331,7 +339,7 @@ BarberShopManager/
 │   ├── aplicacao/                   # Casos de Uso e Regras de Permissão
 │   │   ├── permissoes.ts            # Guardas de autorização por NivelAcesso
 │   │   ├── CasoDeUsoAutenticacao.ts # Login, troca de senha e validação de sessão
-│   │   ├── GerenciadorBarbeiros.ts  # Cadastro e gestão de barbeiros
+│   │   ├── GerenciadorBarbeiros.ts  # Cadastro, edição completa e gestão de barbeiros
 │   │   ├── GerenciadorServicos.ts   # Gestão do catálogo de serviços
 │   │   ├── GerenciadorOrdensServico.ts # Lançamento e listagem de atendimentos
 │   │   ├── GerenciadorFechamento.ts # Extrato individual e fechamento mensal geral
@@ -340,6 +348,7 @@ BarberShopManager/
 │   ├── web/                         # Servidor HTTP Express e API REST
 │   │   ├── criarApp.ts              # Definição das rotas /api/* e servidor estático
 │   │   ├── middlewareAutenticacao.ts # Validação de Bearer Token e NivelAcesso
+│   │   ├── redeLocal.ts             # Descoberta automática de IPs na rede local (Wi-Fi)
 │   │   ├── seedInicial.ts           # Dados iniciais de demonstração
 │   │   ├── serializadores.ts        # Formatação de entidades para JSON
 │   │   └── index.ts
@@ -348,13 +357,23 @@ BarberShopManager/
 │   │   ├── dominio.test.ts          # Testes de Dinheiro, Barbeiro, OS, Snapshot e Extrato
 │   │   ├── autenticacao.test.ts     # Testes de Hash, Token JWT e ServicoAutenticacao
 │   │   ├── aplicacao.test.ts        # Testes integrados de Casos de Uso e Permissões
+│   │   ├── sqlite.test.ts           # Testes de persistência em disco SQLite
 │   │   └── web.test.ts              # Testes de integração das rotas HTTP da API
 │   │
-│   └── index.ts                     # Inicialização do Servidor Web (porta 3000)
-├── public/                          # Interface Web Responsiva (Frontend)
-│   ├── index.html                   # Telas de Login, Lançamento e Painel do Gestor
-│   ├── styles.css                   # Estilização tema Barbearia
-│   └── app.js                       # Lógica de interação com a API REST
+│   └── index.ts                     # Inicialização do Servidor Web em 0.0.0.0:3000
+├── frontend/                        # Código-fonte do Frontend (React + Tailwind CSS)
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx                  # Interface Mobile-First (Celulares) + Desktop
+│       ├── api.ts                   # Cliente HTTP da API REST
+│       ├── types.ts                 # Tipagens dos DTOs
+│       ├── index.css                # Tailwind CSS
+│       └── main.tsx
+├── public/                          # Build estático gerado pelo Vite (100% Offline-ready)
+├── dados/                           # Banco de dados local (barbearia.sqlite)
+├── vite.config.mts
+├── package.json
+└── tsconfig.json
 ├── package.json
 └── tsconfig.json
 ```
@@ -388,3 +407,15 @@ npm test
 ```bash
 npm run typecheck
 ```
+
+---
+
+## 📶 Acesso pelos Celulares na Rede Local (Wi-Fi)
+
+Para permitir que os celulares dos barbeiros conectados no Wi-Fi acessem a máquina dedicada no Windows, libere a porta `3000` no Firewall do Windows (executando uma única vez no PowerShell como Administrador):
+
+```powershell
+New-NetFirewallRule -DisplayName "BarberShop Manager (Porta 3000)" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow -Profile Any
+```
+
+Ao iniciar o sistema (`npm run dev` ou `npm start`), o terminal e o botão **"📶 Acesso Wi-Fi"** no topo da aplicação exibirão o endereço IP da máquina na rede (ex: `http://192.168.1.15:3000`).

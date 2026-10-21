@@ -3,3 +3,8 @@ export * from "./memoria/RepositorioPessoaMemoria";
 export * from "./memoria/RepositorioCredencialMemoria";
 export * from "./memoria/RepositorioServicoMemoria";
 export * from "./memoria/RepositorioOrdemServicoMemoria";
+export * from "./sqlite/BancoSqlite";
+export * from "./sqlite/RepositorioPessoaSqlite";
+export * from "./sqlite/RepositorioCredencialSqlite";
+export * from "./sqlite/RepositorioServicoSqlite";
+export * from "./sqlite/RepositorioOrdemServicoSqlite";

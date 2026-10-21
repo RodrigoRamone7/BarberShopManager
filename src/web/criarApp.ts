@@ -10,12 +10,22 @@ import {
 import { GerenciadorToken, ServicoAutenticacao } from "../autenticacao";
 import { MetodoPagamento, NivelAcesso } from "../dominio";
 import {
+  BancoSqlite,
+  RepositorioCredencial,
   RepositorioCredencialMemoria,
+  RepositorioCredencialSqlite,
+  RepositorioOrdemServico,
   RepositorioOrdemServicoMemoria,
+  RepositorioOrdemServicoSqlite,
+  RepositorioPessoa,
   RepositorioPessoaMemoria,
+  RepositorioPessoaSqlite,
+  RepositorioServico,
   RepositorioServicoMemoria,
+  RepositorioServicoSqlite,
 } from "../repositorios";
 import { criarMiddlewareAutenticacao } from "./middlewareAutenticacao";
+import { obterEnderecosRedeLocal } from "./redeLocal";
 import { popularDadosIniciais } from "./seedInicial";
 import {
   serializarBarbeiro,
@@ -27,10 +37,11 @@ import {
 
 export interface ContextoAplicacaoWeb {
   app: Express;
-  repoPessoa: RepositorioPessoaMemoria;
-  repoCredencial: RepositorioCredencialMemoria;
-  repoServico: RepositorioServicoMemoria;
-  repoOrdem: RepositorioOrdemServicoMemoria;
+  bancoSqlite?: BancoSqlite;
+  repoPessoa: RepositorioPessoa;
+  repoCredencial: RepositorioCredencial;
+  repoServico: RepositorioServico;
+  repoOrdem: RepositorioOrdemServico;
   casoDeUsoAuth: CasoDeUsoAutenticacao;
   gerenciadorBarbeiros: GerenciadorBarbeiros;
   gerenciadorServicos: GerenciadorServicos;
@@ -105,11 +116,27 @@ function tratarErroHttp(res: Response, erro: unknown): void {
 
 export async function criarAplicacaoWeb(opcoes?: {
   popularSeed?: boolean;
+  usarMemoria?: boolean;
+  caminhoSqlite?: string;
 }): Promise<ContextoAplicacaoWeb> {
-  const repoPessoa = new RepositorioPessoaMemoria();
-  const repoCredencial = new RepositorioCredencialMemoria();
-  const repoServico = new RepositorioServicoMemoria();
-  const repoOrdem = new RepositorioOrdemServicoMemoria();
+  let bancoSqlite: BancoSqlite | undefined;
+  let repoPessoa: RepositorioPessoa;
+  let repoCredencial: RepositorioCredencial;
+  let repoServico: RepositorioServico;
+  let repoOrdem: RepositorioOrdemServico;
+
+  if (opcoes?.usarMemoria) {
+    repoPessoa = new RepositorioPessoaMemoria();
+    repoCredencial = new RepositorioCredencialMemoria();
+    repoServico = new RepositorioServicoMemoria();
+    repoOrdem = new RepositorioOrdemServicoMemoria();
+  } else {
+    bancoSqlite = new BancoSqlite(opcoes?.caminhoSqlite);
+    repoPessoa = new RepositorioPessoaSqlite(bancoSqlite);
+    repoCredencial = new RepositorioCredencialSqlite(bancoSqlite);
+    repoServico = new RepositorioServicoSqlite(bancoSqlite);
+    repoOrdem = new RepositorioOrdemServicoSqlite(bancoSqlite);
+  }
 
   const segredoJwt =
     process.env.JWT_SECRET ?? "segredo-super-seguro-barbearia-2026-web";
@@ -160,6 +187,25 @@ export async function criarAplicacaoWeb(opcoes?: {
     NivelAcesso.ADMINISTRADOR,
     NivelAcesso.GESTOR,
   ]);
+
+  // ==========================================
+  // ROTA DE INFORMAÇÕES DA REDE LOCAL (LAN / WI-FI)
+  // ==========================================
+  app.get(
+    "/api/sistema/rede",
+    autenticado,
+    (req: Request, res: Response) => {
+      const portaAtual = Number(
+        req.socket.localPort || process.env.PORT || 3000
+      );
+      const enderecos = obterEnderecosRedeLocal(portaAtual);
+      res.json({
+        porta: portaAtual,
+        urlLocalhost: `http://localhost:${portaAtual}`,
+        enderecosRedeLocal: enderecos,
+      });
+    }
+  );
 
   // ==========================================
   // ROTAS DE AUTENTICAÇÃO (/api/auth)
@@ -357,6 +403,48 @@ export async function criarAplicacaoWeb(opcoes?: {
   );
 
   app.patch(
+    "/api/barbeiros/:id",
+    apenasGestao,
+    async (req: Request, res: Response) => {
+      try {
+        const {
+          nome,
+          taxaComissaoPadrao,
+          nivelAcesso,
+          email,
+          telefone,
+          ativo,
+          novaSenha,
+        } = req.body ?? {};
+
+        const barbeiro = await gerenciadorBarbeiros.atualizarBarbeiro(
+          req.usuario!,
+          String(req.params.id),
+          {
+            nome: nome !== undefined ? String(nome) : undefined,
+            taxaComissaoPadrao:
+              taxaComissaoPadrao !== undefined
+                ? Number(taxaComissaoPadrao)
+                : undefined,
+            nivelAcesso:
+              nivelAcesso !== undefined
+                ? (nivelAcesso as NivelAcesso)
+                : undefined,
+            email: email !== undefined ? String(email) : undefined,
+            telefone: telefone !== undefined ? String(telefone) : undefined,
+            ativo: ativo !== undefined ? Boolean(ativo) : undefined,
+            novaSenha: novaSenha !== undefined ? String(novaSenha) : undefined,
+          }
+        );
+
+        res.json(serializarBarbeiro(barbeiro));
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
+    }
+  );
+
+  app.patch(
     "/api/barbeiros/:id/comissao",
     apenasGestao,
     async (req: Request, res: Response) => {
@@ -514,6 +602,7 @@ export async function criarAplicacaoWeb(opcoes?: {
 
   return {
     app,
+    bancoSqlite,
     repoPessoa,
     repoCredencial,
     repoServico,

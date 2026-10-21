@@ -5,12 +5,17 @@ import { criarAplicacaoWeb } from "../web";
 
 describe("Camada Web - API REST e Controle de Acesso HTTP", () => {
   let servidor: Server;
+  let fecharBanco: (() => void) | undefined;
   let urlBase: string;
   let tokenAdmin: string;
   let tokenCarlos: string;
 
   before(async () => {
-    const { app } = await criarAplicacaoWeb({ popularSeed: true });
+    const { app, bancoSqlite } = await criarAplicacaoWeb({
+      popularSeed: true,
+      caminhoSqlite: ":memory:",
+    });
+    fecharBanco = () => bancoSqlite?.fechar();
     await new Promise<void>((resolve) => {
       servidor = app.listen(0, () => {
         const endereco = servidor.address();
@@ -26,6 +31,7 @@ describe("Camada Web - API REST e Controle de Acesso HTTP", () => {
     await new Promise<void>((resolve, reject) => {
       servidor.close((err) => (err ? reject(err) : resolve()));
     });
+    fecharBanco?.();
   });
 
   it("deve realizar login via POST /api/auth/login para Admin e Operador", async () => {
@@ -117,5 +123,58 @@ describe("Camada Web - API REST e Controle de Acesso HTTP", () => {
     assert.ok(fechamento.faturamentoBrutoTotal > 0);
     assert.ok(fechamento.totalComissoesPagar > 0);
     assert.ok(fechamento.extratosPorBarbeiro.length >= 3);
+  });
+
+  it("deve permitir ao ADMINISTRADOR editar nome, comissão e dados do barbeiro via PATCH /api/barbeiros/:id", async () => {
+    const resLista = await fetch(`${urlBase}/api/barbeiros?todos=true`, {
+      headers: { Authorization: `Bearer ${tokenAdmin}` },
+    });
+    assert.equal(resLista.status, 200);
+    const barbeiros = (await resLista.json()) as Array<{
+      id: string;
+      nome: string;
+      taxaComissaoPadrao: number;
+    }>;
+
+    const carlos = barbeiros.find((b) => b.nome.includes("Carlos"));
+    assert.ok(carlos);
+
+    // Operador não pode editar barbeiro
+    const resBloqueado = await fetch(`${urlBase}/api/barbeiros/${carlos.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenCarlos}`,
+      },
+      body: JSON.stringify({
+        nome: "Tentativa Indevida",
+        taxaComissaoPadrao: 90,
+      }),
+    });
+    assert.equal(resBloqueado.status, 403);
+
+    // Administrador edita nome, comissão e telefone com sucesso
+    const resEdicao = await fetch(`${urlBase}/api/barbeiros/${carlos.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokenAdmin}`,
+      },
+      body: JSON.stringify({
+        nome: "Carlos Silva Jr.",
+        taxaComissaoPadrao: 55,
+        telefone: "(11) 98888-9999",
+      }),
+    });
+
+    assert.equal(resEdicao.status, 200);
+    const atualizado = (await resEdicao.json()) as {
+      nome: string;
+      taxaComissaoPadrao: number;
+      telefone: string;
+    };
+    assert.equal(atualizado.nome, "Carlos Silva Jr.");
+    assert.equal(atualizado.taxaComissaoPadrao, 55);
+    assert.equal(atualizado.telefone, "(11) 98888-9999");
   });
 });
