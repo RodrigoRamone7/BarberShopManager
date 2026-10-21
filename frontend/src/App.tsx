@@ -14,6 +14,7 @@ import {
   NivelAcesso,
   OrdemServicoDTO,
   ServicoDTO,
+  StatusLicencaDTO,
   UsuarioAutenticado,
 } from "./types";
 
@@ -66,6 +67,11 @@ export default function App() {
   const [barbeiros, setBarbeiros] = useState<BarbeiroDTO[]>([]);
   const [infoRede, setInfoRede] = useState<InfoRedeLocalDTO | null>(null);
   const [modalRedeAberto, setModalRedeAberto] = useState(false);
+  const [statusLicenca, setStatusLicenca] = useState<StatusLicencaDTO | null>(
+    null
+  );
+  const [modalLicencaAberto, setModalLicencaAberto] = useState(false);
+  const [chaveAtivacaoInput, setChaveAtivacaoInput] = useState("");
 
   // Estado de Nova Ordem de Serviço
   const [barbeiroOrdemId, setBarbeiroOrdemId] = useState<string>("");
@@ -206,23 +212,29 @@ export default function App() {
         usuarioAtual.nivelAcesso === "ADMINISTRADOR" ||
         usuarioAtual.nivelAcesso === "GESTOR";
 
-      const [listaServicos, listaBarbeiros, dadosRede] = await Promise.all([
-        requisitarApi<ServicoDTO[]>(
-          `/api/servicos${gestao ? "?todos=true" : ""}`,
-          tokenAtual
-        ),
-        requisitarApi<BarbeiroDTO[]>(
-          `/api/barbeiros${gestao ? "?todos=true" : ""}`,
-          tokenAtual
-        ),
-        requisitarApi<InfoRedeLocalDTO>("/api/sistema/rede", tokenAtual).catch(
-          () => null
-        ),
-      ]);
+      const [listaServicos, listaBarbeiros, dadosRede, dadosLicenca] =
+        await Promise.all([
+          requisitarApi<ServicoDTO[]>(
+            `/api/servicos${gestao ? "?todos=true" : ""}`,
+            tokenAtual
+          ),
+          requisitarApi<BarbeiroDTO[]>(
+            `/api/barbeiros${gestao ? "?todos=true" : ""}`,
+            tokenAtual
+          ),
+          requisitarApi<InfoRedeLocalDTO>("/api/sistema/rede", tokenAtual).catch(
+            () => null
+          ),
+          requisitarApi<StatusLicencaDTO>(
+            "/api/sistema/licenca",
+            tokenAtual
+          ).catch(() => null),
+        ]);
 
       setServicos(listaServicos);
       setBarbeiros(listaBarbeiros);
       if (dadosRede) setInfoRede(dadosRede);
+      if (dadosLicenca) setStatusLicenca(dadosLicenca);
 
       const idAlvo = barbeiroOrdemId || usuarioAtual.pessoaId;
       if (!barbeiroOrdemId) {
@@ -251,6 +263,9 @@ export default function App() {
     async function validarSessaoInicial() {
       requisitarApi<InfoRedeLocalDTO>("/api/sistema/rede", null)
         .then((dados) => setInfoRede(dados))
+        .catch(() => null);
+      requisitarApi<StatusLicencaDTO>("/api/sistema/licenca", null)
+        .then((dados) => setStatusLicenca(dados))
         .catch(() => null);
 
       if (!token) {
@@ -517,6 +532,34 @@ export default function App() {
     }
   }
 
+  async function handleAtivarLicencaDefinitiva(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !usuario) return;
+
+    try {
+      const novoStatus = await requisitarApi<StatusLicencaDTO>(
+        "/api/sistema/licenca/ativar",
+        token,
+        {
+          method: "POST",
+          body: JSON.stringify({ chaveAtivacao: chaveAtivacaoInput }),
+        }
+      );
+
+      setStatusLicenca(novoStatus);
+      setChaveAtivacaoInput("");
+      setModalLicencaAberto(false);
+      exibirToast(
+        `Licença Definitiva ativada com sucesso para ${novoStatus.licenciadoPara}!`
+      );
+    } catch (erro) {
+      exibirToast(
+        erro instanceof Error ? erro.message : "Chave de ativação inválida.",
+        "erro"
+      );
+    }
+  }
+
   if (carregandoSessao) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-300">
@@ -720,6 +763,32 @@ export default function App() {
           }`}
         >
           {toast.mensagem}
+        </div>
+      )}
+
+      {/* BARRA DE STATUS DE DEMONSTRAÇÃO (30 DIAS) OU BLOQUEIO SOMENTE LEITURA */}
+      {statusLicenca && statusLicenca.tipo === "DEMO" && (
+        <div
+          className={`border-b px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 ${
+            statusLicenca.modoSomenteLeitura
+              ? "bg-red-950/90 border-red-500/50 text-red-200"
+              : "bg-amber-500/10 border-amber-500/30 text-amber-200"
+          }`}
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <span>{statusLicenca.modoSomenteLeitura ? "🔒" : "⏳"}</span>
+            <span>{statusLicenca.mensagemStatus}</span>
+          </div>
+
+          {ehGestorOuAdmin && (
+            <button
+              type="button"
+              onClick={() => setModalLicencaAberto(true)}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer shrink-0"
+            >
+              🔑 Ativar Versão Definitiva
+            </button>
+          )}
         </div>
       )}
 
@@ -999,10 +1068,18 @@ export default function App() {
 
                   <button
                     type="submit"
-                    disabled={lancandoOrdem}
-                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-extrabold text-sm sm:text-base shadow-lg shadow-amber-500/15 transition cursor-pointer"
+                    disabled={
+                      lancandoOrdem || Boolean(statusLicenca?.modoSomenteLeitura)
+                    }
+                    className={`w-full sm:w-auto px-6 py-3.5 rounded-xl font-extrabold text-sm sm:text-base shadow-lg transition ${
+                      statusLicenca?.modoSomenteLeitura
+                        ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                        : "bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 shadow-amber-500/15 cursor-pointer"
+                    }`}
                   >
-                    {lancandoOrdem
+                    {statusLicenca?.modoSomenteLeitura
+                      ? "🔒 Demonstração Encerrada (Somente Leitura)"
+                      : lancandoOrdem
                       ? "Registrando..."
                       : "✅ Confirmar Ordem de Serviço"}
                   </button>
@@ -1853,6 +1930,73 @@ export default function App() {
               navegador. Assim, um ícone da barbearia ficará salvo na tela do
               celular do barbeiro!
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          MODAL: ATIVAR VERSÃO DEFINITIVA PAGA (CHAVE DE LICENÇA)
+         ========================================================= */}
+      {modalLicencaAberto && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-amber-400">
+                  🔑 Ativar Versão Definitiva
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ao ativar a chave definitiva, o bloqueio de 30 dias é removido
+                  imediatamente e{" "}
+                  <strong className="text-slate-200">
+                    todos os dados já lançados são preservados
+                  </strong>
+                  .
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalLicencaAberto(false)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleAtivarLicencaDefinitiva}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Chave de Ativação (BSM-...)
+                </label>
+                <input
+                  type="text"
+                  value={chaveAtivacaoInput}
+                  onChange={(e) => setChaveAtivacaoInput(e.target.value)}
+                  placeholder="Cole aqui a chave BSM-..."
+                  required
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-3 text-sm text-slate-100 font-mono focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalLicencaAberto(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer"
+                >
+                  ✅ Desbloquear Versão Definitiva
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

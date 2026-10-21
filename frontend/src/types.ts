@@ -108,3 +108,18 @@ export interface InfoRedeLocalDTO {
     qrCodeDataUrl?: string;
   }>;
 }
+
+export interface StatusLicencaDTO {
+  tipo: "DEMO" | "DEFINITIVA";
+  ativaParaEscrita: boolean;
+  modoSomenteLeitura: boolean;
+  expirada: boolean;
+  relogioAdulterado: boolean;
+  diasTotaisDemo: number;
+  diasRestantesDemo: number;
+  instaladoEm: string;
+  expiraDemoEm: string;
+  licenciadoPara: string | null;
+  ativadoEm: string | null;
+  mensagemStatus: string;
+}

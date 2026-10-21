@@ -408,6 +408,28 @@ npm test
 npm run typecheck
 ```
 
+### 6. Gerar Chave de Ativação Definitiva (Pós-Demonstração de 30 Dias)
+```bash
+npm run gerar-licenca -- "Nome da Barbearia"
+```
+
+---
+
+## 🔑 Sistema de Demonstração (30 Dias) e Ativação Definitiva
+
+O sistema possui um módulo nativo de licenciamento comercial (`src/licenca/GerenciadorLicenca.ts`) integrado ao banco SQLite (`tabela licenca_sistema`):
+
+1. **Período de Demonstração (30 Dias)**:
+   - No primeiro uso na máquina do cliente, o sistema inicia automaticamente uma licença `DEMO` válida por **30 dias**, assinada com `HMAC-SHA256` e proteção contra atraso manual do relógio do computador.
+   - Durante os 30 dias, o topo do sistema exibe quantos dias restam na avaliação.
+2. **Vencimento em Modo Somente Leitura (Preservação Total dos Dados)**:
+   - Após os 30 dias, o sistema entra em **Modo Somente Leitura**:
+     - Todos os lançamentos, barbeiros, serviços e o fechamento mensal acumulados nos 30 dias **continuam 100% salvos no SQLite e disponíveis para visualização**.
+     - Novos lançamentos de Ordens de Serviço e novos cadastros ficam bloqueados (`HTTP 403`).
+3. **Transição para a Versão Final Paga (Zero Reinstalação)**:
+   - Quando o cliente adquire a versão definitiva, basta gerar a chave com `npm run gerar-licenca -- "Nome da Barbearia"` e colar no botão **"🔑 Ativar Versão Definitiva"** no topo do sistema.
+   - O bloqueio é removido imediatamente e o cliente continua utilizando o sistema com todo o histórico dos 30 dias intacto.
+
 ---
 
 ## 📶 Acesso pelos Celulares na Rede Local (Wi-Fi)

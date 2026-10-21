@@ -81,6 +81,18 @@ export class BancoSqlite {
 
       CREATE INDEX IF NOT EXISTS idx_ordens_barbeiro_data
         ON ordens_servico (barbeiro_id, realizado_em);
+
+      CREATE TABLE IF NOT EXISTS licenca_sistema (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        instalado_em TEXT NOT NULL,
+        expira_demo_em TEXT NOT NULL,
+        ultimo_relogio_visto TEXT NOT NULL,
+        tipo_licenca TEXT NOT NULL DEFAULT 'DEMO',
+        licenciado_para TEXT,
+        chave_ativacao TEXT,
+        ativado_em TEXT,
+        assinatura_integridade TEXT NOT NULL
+      );
     `);
   }
 

@@ -9,6 +9,7 @@ import {
 } from "../aplicacao";
 import { GerenciadorToken, ServicoAutenticacao } from "../autenticacao";
 import { MetodoPagamento, NivelAcesso } from "../dominio";
+import { GerenciadorLicenca } from "../licenca";
 import {
   BancoSqlite,
   RepositorioCredencial,
@@ -38,6 +39,7 @@ import {
 export interface ContextoAplicacaoWeb {
   app: Express;
   bancoSqlite?: BancoSqlite;
+  gerenciadorLicenca: GerenciadorLicenca;
   repoPessoa: RepositorioPessoa;
   repoCredencial: RepositorioCredencial;
   repoServico: RepositorioServico;
@@ -101,7 +103,8 @@ function tratarErroHttp(res: Response, erro: unknown): void {
   if (
     mensagem.includes("Acesso negado") ||
     mensagem.includes("Operadores só podem") ||
-    mensagem.includes("Apenas administradores")
+    mensagem.includes("Apenas administradores") ||
+    mensagem.includes("Licença bloqueada")
   ) {
     res.status(403).json({ erro: mensagem });
     return;
@@ -118,6 +121,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   popularSeed?: boolean;
   usarMemoria?: boolean;
   caminhoSqlite?: string;
+  diasDemo?: number;
 }): Promise<ContextoAplicacaoWeb> {
   let bancoSqlite: BancoSqlite | undefined;
   let repoPessoa: RepositorioPessoa;
@@ -137,6 +141,12 @@ export async function criarAplicacaoWeb(opcoes?: {
     repoServico = new RepositorioServicoSqlite(bancoSqlite);
     repoOrdem = new RepositorioOrdemServicoSqlite(bancoSqlite);
   }
+
+  const gerenciadorLicenca = new GerenciadorLicenca(
+    bancoSqlite,
+    opcoes?.diasDemo
+  );
+  gerenciadorLicenca.obterStatus();
 
   const segredoJwt =
     process.env.JWT_SECRET ?? "segredo-super-seguro-barbearia-2026-web";
@@ -187,6 +197,50 @@ export async function criarAplicacaoWeb(opcoes?: {
     NivelAcesso.ADMINISTRADOR,
     NivelAcesso.GESTOR,
   ]);
+
+  const exigirLicencaEscrita = (
+    _req: Request,
+    res: Response,
+    next: () => void
+  ) => {
+    try {
+      gerenciadorLicenca.exigirPermissaoEscrita();
+      next();
+    } catch (erro) {
+      tratarErroHttp(res, erro);
+    }
+  };
+
+  // ==========================================
+  // ROTAS DE LICENÇA E DEMONSTRAÇÃO DE 30 DIAS (/api/sistema/licenca)
+  // ==========================================
+  app.get("/api/sistema/licenca", (_req: Request, res: Response) => {
+    try {
+      res.json(gerenciadorLicenca.obterStatus());
+    } catch (erro) {
+      tratarErroHttp(res, erro);
+    }
+  });
+
+  app.post(
+    "/api/sistema/licenca/ativar",
+    apenasGestao,
+    (req: Request, res: Response) => {
+      try {
+        const { chaveAtivacao } = req.body ?? {};
+        if (!chaveAtivacao || !String(chaveAtivacao).trim()) {
+          res.status(400).json({ erro: "Informe a Chave de Ativação." });
+          return;
+        }
+        const novoStatus = gerenciadorLicenca.ativarLicencaDefinitiva(
+          String(chaveAtivacao)
+        );
+        res.json(novoStatus);
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
+    }
+  );
 
   // ==========================================
   // ROTA DE INFORMAÇÕES DA REDE LOCAL (DNS LOCAL + QR CODE WI-FI)
@@ -292,6 +346,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.post(
     "/api/servicos",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const { nome, preco, taxaComissaoEspecifica } = req.body ?? {};
@@ -318,6 +373,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.patch(
     "/api/servicos/:id",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const { nome, preco, taxaComissaoEspecifica, ativo } = req.body ?? {};
@@ -369,6 +425,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.post(
     "/api/barbeiros",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const {
@@ -404,6 +461,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.patch(
     "/api/barbeiros/:id",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const {
@@ -446,6 +504,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.patch(
     "/api/barbeiros/:id/comissao",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const { taxaComissaoPadrao } = req.body ?? {};
@@ -464,6 +523,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   app.patch(
     "/api/barbeiros/:id/status",
     apenasGestao,
+    exigirLicencaEscrita,
     async (req: Request, res: Response) => {
       try {
         const { ativo } = req.body ?? {};
@@ -482,7 +542,11 @@ export async function criarAplicacaoWeb(opcoes?: {
   // ==========================================
   // ROTAS DE ORDENS DE SERVIÇO (/api/ordens)
   // ==========================================
-  app.post("/api/ordens", autenticado, async (req: Request, res: Response) => {
+  app.post(
+    "/api/ordens",
+    autenticado,
+    exigirLicencaEscrita,
+    async (req: Request, res: Response) => {
     try {
       const { barbeiroId, itens, metodoPagamento, observacoes } =
         req.body ?? {};
@@ -602,6 +666,7 @@ export async function criarAplicacaoWeb(opcoes?: {
   return {
     app,
     bancoSqlite,
+    gerenciadorLicenca,
     repoPessoa,
     repoCredencial,
     repoServico,
