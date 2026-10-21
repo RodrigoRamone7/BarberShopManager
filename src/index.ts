@@ -1,13 +1,19 @@
-import { criarAplicacaoWeb, obterEnderecosRedeLocal } from "./web";
+import {
+  criarAplicacaoWeb,
+  iniciarDnsLocalMdns,
+  obterInfoCompletaRedeLocal,
+} from "./web";
 
 const PORTA = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? "0.0.0.0";
+const DOMINIO_LOCAL = process.env.DOMINIO_LOCAL ?? "barbearia.local";
 
 async function iniciarServidor() {
   const { app, bancoSqlite } = await criarAplicacaoWeb({ popularSeed: true });
 
-  app.listen(PORTA, HOST, () => {
-    const enderecosLan = obterEnderecosRedeLocal(PORTA);
+  app.listen(PORTA, HOST, async () => {
+    const servicoMdns = iniciarDnsLocalMdns(PORTA, DOMINIO_LOCAL);
+    const infoRede = await obterInfoCompletaRedeLocal(PORTA, DOMINIO_LOCAL);
 
     console.log("==========================================================");
     console.log("💈 BarberShop Manager - Servidor Web em Rede Local Ativo!");
@@ -15,25 +21,31 @@ async function iniciarServidor() {
     if (bancoSqlite) {
       console.log(`🗄️  Banco SQLite Local:     ${bancoSqlite.caminhoArquivo}`);
     }
-    console.log(`💻 Acesso nesta máquina:   http://localhost:${PORTA}`);
+    console.log(`💻 Acesso nesta máquina:   ${infoRede.urlLocalhost}`);
+    console.log("----------------------------------------------------------");
+    console.log("📱 ACESSO AMIGÁVEL PELOS CELULARES NO WI-FI:");
+    console.log(`   🌐 Endereço DNS Local:  ${infoRede.urlDominioLocal}`);
+    console.log(`   🖥️  Nome do Windows:     ${infoRede.urlHostnameWindows}`);
 
-    if (enderecosLan.length > 0) {
-      console.log("📱 Acesso pelos celulares no Wi-Fi (Rede Local):");
-      for (const item of enderecosLan) {
-        console.log(`   👉 ${item.url} (${item.interfaceRede})`);
+    if (infoRede.enderecosRedeLocal.length > 0) {
+      for (const item of infoRede.enderecosRedeLocal) {
+        console.log(`   📶 IP Direto (${item.interfaceRede}): ${item.url}`);
       }
-    } else {
-      console.log(
-        "📱 Conecte a máquina ao Wi-Fi/Rede Local para gerar o IP de acesso."
-      );
     }
-
+    console.log(
+      "   📷 Ou clique em 'Conectar Celular (QR Code)' na tela do sistema!"
+    );
     console.log("----------------------------------------------------------");
     console.log("Contas de demonstração pré-cadastradas:");
     console.log("  • Admin:    admin@barbearia.com  / admin123");
     console.log("  • Barbeiro: carlos@barbearia.com / carlos123");
     console.log("  • Barbeiro: mateus@barbearia.com / mateus123");
     console.log("==========================================================");
+
+    process.on("SIGINT", () => {
+      servicoMdns.parar();
+      process.exit(0);
+    });
   });
 }
 

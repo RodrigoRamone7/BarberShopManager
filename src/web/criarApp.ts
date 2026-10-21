@@ -25,7 +25,7 @@ import {
   RepositorioServicoSqlite,
 } from "../repositorios";
 import { criarMiddlewareAutenticacao } from "./middlewareAutenticacao";
-import { obterEnderecosRedeLocal } from "./redeLocal";
+import { obterInfoCompletaRedeLocal } from "./redeLocal";
 import { popularDadosIniciais } from "./seedInicial";
 import {
   serializarBarbeiro,
@@ -189,21 +189,20 @@ export async function criarAplicacaoWeb(opcoes?: {
   ]);
 
   // ==========================================
-  // ROTA DE INFORMAÇÕES DA REDE LOCAL (LAN / WI-FI)
+  // ROTA DE INFORMAÇÕES DA REDE LOCAL (DNS LOCAL + QR CODE WI-FI)
   // ==========================================
   app.get(
     "/api/sistema/rede",
-    autenticado,
-    (req: Request, res: Response) => {
-      const portaAtual = Number(
-        req.socket.localPort || process.env.PORT || 3000
-      );
-      const enderecos = obterEnderecosRedeLocal(portaAtual);
-      res.json({
-        porta: portaAtual,
-        urlLocalhost: `http://localhost:${portaAtual}`,
-        enderecosRedeLocal: enderecos,
-      });
+    async (req: Request, res: Response) => {
+      try {
+        const portaAtual = Number(
+          req.socket.localPort || process.env.PORT || 3000
+        );
+        const info = await obterInfoCompletaRedeLocal(portaAtual);
+        res.json(info);
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
     }
   );
 

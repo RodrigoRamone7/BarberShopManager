@@ -249,6 +249,10 @@ export default function App() {
   // Validação de sessão ao abrir o app
   useEffect(() => {
     async function validarSessaoInicial() {
+      requisitarApi<InfoRedeLocalDTO>("/api/sistema/rede", null)
+        .then((dados) => setInfoRede(dados))
+        .catch(() => null);
+
       if (!token) {
         setCarregandoSessao(false);
         return;
@@ -632,7 +636,69 @@ export default function App() {
               </button>
             </div>
           </div>
+
+          {infoRede && (
+            <div className="mt-4 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-3">
+              <div className="text-xs text-slate-400">
+                Vai acessar pelo celular no Wi-Fi?
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalRedeAberto(true)}
+                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-bold text-amber-300 cursor-pointer shrink-0"
+              >
+                📷 QR Code / Wi-Fi
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Modal de QR Code também acessível na tela de Login */}
+        {modalRedeAberto && infoRede && (
+          <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl text-center">
+              <div className="flex items-center justify-between text-left">
+                <div>
+                  <h3 className="text-base font-bold text-amber-400">
+                    📷 Conectar Celular no Wi-Fi
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Aponte a câmera do celular para o QR Code abaixo:
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalRedeAberto(false)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-sm cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bg-white p-3 rounded-2xl inline-block mx-auto shadow-lg">
+                <img
+                  src={infoRede.qrCodePrincipalDataUrl}
+                  alt="QR Code de Acesso Wi-Fi"
+                  className="w-48 h-48 mx-auto"
+                />
+              </div>
+
+              <div className="space-y-2 text-left">
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                  <span className="text-[11px] uppercase tracking-wider text-slate-400 block">
+                    Endereço Amigável (DNS Local)
+                  </span>
+                  <strong className="text-sm sm:text-base text-amber-400 font-extrabold">
+                    {infoRede.urlDominioLocal}
+                  </strong>
+                  <span className="block text-[11px] text-slate-500 mt-0.5">
+                    Ou nome do PC: {infoRede.urlHostnameWindows}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1685,20 +1751,19 @@ export default function App() {
       </nav>
 
       {/* =========================================================
-          MODAL: ACESSO DOS CELULARES NA REDE LOCAL (WI-FI)
+          MODAL: ACESSO DOS CELULARES NA REDE LOCAL (QR CODE + DNS LOCAL)
          ========================================================= */}
       {modalRedeAberto && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg font-bold text-amber-400">
-                  📶 Acesso pelos Celulares no Wi-Fi
+                  📷 Acesso Fácil pelos Celulares (Wi-Fi)
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-400">
-                  Conecte os celulares dos barbeiros no mesmo Wi-Fi desta
-                  máquina e abra um dos endereços abaixo no navegador do
-                  celular:
+                  Aponte a câmera do celular para o QR Code ou digite o endereço
+                  amigável no navegador:
                 </p>
               </div>
               <button
@@ -1710,20 +1775,62 @@ export default function App() {
               </button>
             </div>
 
+            {infoRede?.qrCodePrincipalDataUrl && (
+              <div className="flex flex-col items-center justify-center bg-slate-950 border border-slate-800 rounded-2xl p-4 gap-2">
+                <div className="bg-white p-2.5 rounded-xl shadow">
+                  <img
+                    src={infoRede.qrCodePrincipalDataUrl}
+                    alt="QR Code Wi-Fi Barbearia"
+                    className="w-44 h-44"
+                  />
+                </div>
+                <span className="text-xs text-slate-400">
+                  Escaneie com a câmera do celular para abrir direto
+                </span>
+              </div>
+            )}
+
             <div className="space-y-2.5">
+              {/* Endereço DNS Local Amigável */}
+              {infoRede && (
+                <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 block">
+                      🌐 Endereço Amigável (DNS Local / mDNS)
+                    </span>
+                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                      {infoRede.urlDominioLocal}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      Alternativa do Windows: {infoRede.urlHostnameWindows}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(infoRede.urlDominioLocal);
+                      exibirToast("Endereço amigável copiado!");
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-amber-300 border border-amber-500/30 cursor-pointer shrink-0"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              )}
+
+              {/* Endereços IP caso necessário */}
               {infoRede?.enderecosRedeLocal &&
-              infoRede.enderecosRedeLocal.length > 0 ? (
                 infoRede.enderecosRedeLocal.map((item) => (
                   <div
                     key={item.url}
                     className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between gap-3"
                   >
                     <div>
-                      <div className="text-sm sm:text-base font-extrabold text-emerald-400">
+                      <span className="text-[11px] uppercase tracking-wider text-slate-400 block">
+                        📶 Link Direto da Rede ({item.interfaceRede})
+                      </span>
+                      <div className="text-sm font-bold text-emerald-400">
                         {item.url}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        Rede: {item.interfaceRede} (IP: {item.ip})
                       </div>
                     </div>
                     <button
@@ -1732,26 +1839,19 @@ export default function App() {
                         navigator.clipboard?.writeText(item.url);
                         exibirToast("Endereço copiado!");
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer shrink-0"
                     >
                       Copiar
                     </button>
                   </div>
-                ))
-              ) : (
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-400">
-                  Acesso local nesta máquina:{" "}
-                  <strong className="text-slate-200">
-                    {infoRede?.urlLocalhost || window.location.origin}
-                  </strong>
-                </div>
-              )}
+                ))}
             </div>
 
             <div className="text-xs text-slate-400 bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
-              💡 <strong>Dica:</strong> No celular, o barbeiro pode tocar em{" "}
-              <em>"Adicionar à Tela de Início"</em> no navegador para usar o
-              BarberShop Manager como um aplicativo direto na tela do celular.
+              💡 <strong>Dica:</strong> Após abrir no celular pela primeira vez,
+              toque em <em>"Adicionar à Tela de Início"</em> no menu do
+              navegador. Assim, um ícone da barbearia ficará salvo na tela do
+              celular do barbeiro!
             </div>
           </div>
         </div>

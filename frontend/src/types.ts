@@ -94,10 +94,17 @@ export interface FechamentoGeralDTO {
 
 export interface InfoRedeLocalDTO {
   porta: number;
+  dominioLocal: string;
+  urlDominioLocal: string;
+  hostnameWindows: string;
+  urlHostnameWindows: string;
   urlLocalhost: string;
+  urlRecomendadaCelular: string;
+  qrCodePrincipalDataUrl: string;
   enderecosRedeLocal: Array<{
     interfaceRede: string;
     ip: string;
     url: string;
+    qrCodeDataUrl?: string;
   }>;
 }

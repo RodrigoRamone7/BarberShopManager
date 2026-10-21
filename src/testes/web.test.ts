@@ -177,4 +177,19 @@ describe("Camada Web - API REST e Controle de Acesso HTTP", () => {
     assert.equal(atualizado.taxaComissaoPadrao, 55);
     assert.equal(atualizado.telefone, "(11) 98888-9999");
   });
+
+  it("deve retornar informações de DNS local (barbearia.local) e QR Code em GET /api/sistema/rede", async () => {
+    const resRede = await fetch(`${urlBase}/api/sistema/rede`);
+    assert.equal(resRede.status, 200);
+    const dadosRede = (await resRede.json()) as {
+      dominioLocal: string;
+      urlDominioLocal: string;
+      qrCodePrincipalDataUrl: string;
+    };
+    assert.equal(dadosRede.dominioLocal, "barbearia.local");
+    assert.ok(dadosRede.urlDominioLocal.includes("barbearia.local"));
+    assert.ok(
+      dadosRede.qrCodePrincipalDataUrl.startsWith("data:image/png;base64,")
+    );
+  });
 });
