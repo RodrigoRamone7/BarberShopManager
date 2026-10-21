@@ -27,6 +27,7 @@ export class ExtratoBarbeiro {
     this.fimPeriodo = props.fimPeriodo;
     this.ordens = props.ordens.filter(
       (ordem) =>
+        !ordem.excluida &&
         ordem.barbeiroId === props.barbeiro.id &&
         ordem.realizadoEm >= props.inicioPeriodo &&
         ordem.realizadoEm <= props.fimPeriodo

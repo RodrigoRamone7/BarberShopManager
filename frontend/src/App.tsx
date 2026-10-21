@@ -18,7 +18,7 @@ import {
   UsuarioAutenticado,
 } from "./types";
 
-type AbaAtiva = "lancar" | "extrato" | "fechamento" | "gestao";
+type AbaAtiva = "lancar" | "extrato" | "fechamento" | "gestao" | "auditoria";
 
 const METODOS_PAGAMENTO: Array<{
   valor: MetodoPagamento;
@@ -128,6 +128,29 @@ export default function App() {
   const [editServComissao, setEditServComissao] = useState("");
   const [editServAtivo, setEditServAtivo] = useState(true);
 
+  // Estados de Edição / Exclusão Lógica de Ordem de Serviço e Auditoria (Admin)
+  const [ordemEditando, setOrdemEditando] = useState<OrdemServicoDTO | null>(
+    null
+  );
+  const [editOrdemServicos, setEditOrdemServicos] = useState<string[]>([]);
+  const [editOrdemPagamento, setEditOrdemPagamento] =
+    useState<MetodoPagamento>("PIX");
+  const [editOrdemObservacoes, setEditOrdemObservacoes] = useState("");
+  const [editOrdemMotivo, setEditOrdemMotivo] = useState("");
+
+  const [ordemExcluindo, setOrdemExcluindo] = useState<OrdemServicoDTO | null>(
+    null
+  );
+  const [excluirOrdemMotivo, setExcluirOrdemMotivo] = useState("");
+
+  const [ordensAuditadas, setOrdensAuditadas] = useState<OrdemServicoDTO[]>([]);
+  const [auditoriaInicio, setAuditoriaInicio] = useState(datasPadrao.inicio);
+  const [auditoriaFim, setAuditoriaFim] = useState(datasPadrao.fim);
+
+  const ehAdministrador = useMemo(() => {
+    return usuario?.nivelAcesso === "ADMINISTRADOR";
+  }, [usuario]);
+
   const ehGestorOuAdmin = useMemo(() => {
     return (
       usuario?.nivelAcesso === "ADMINISTRADOR" ||
@@ -206,6 +229,18 @@ export default function App() {
     []
   );
 
+  const carregarAuditoriaAdmin = useCallback(
+    async (tokenAtual: string, inicio: string, fim: string) => {
+      const params = new URLSearchParams({ inicio, fim });
+      const lista = await requisitarApi<OrdemServicoDTO[]>(
+        `/api/ordens/auditoria?${params}`,
+        tokenAtual
+      );
+      setOrdensAuditadas(lista);
+    },
+    []
+  );
+
   const carregarDadosGerais = useCallback(
     async (tokenAtual: string, usuarioAtual: UsuarioAutenticado) => {
       const gestao =
@@ -246,9 +281,16 @@ export default function App() {
       if (gestao) {
         await carregarFechamentoGeral(tokenAtual, geralInicio, geralFim);
       }
+
+      if (usuarioAtual.nivelAcesso === "ADMINISTRADOR") {
+        await carregarAuditoriaAdmin(tokenAtual, auditoriaInicio, auditoriaFim);
+      }
     },
     [
+      auditoriaFim,
+      auditoriaInicio,
       barbeiroOrdemId,
+      carregarAuditoriaAdmin,
       carregarExtratoIndividual,
       carregarFechamentoGeral,
       geralFim,
@@ -560,6 +602,75 @@ export default function App() {
     }
   }
 
+  function abrirModalEdicaoOrdem(ordem: OrdemServicoDTO) {
+    setOrdemEditando(ordem);
+    setEditOrdemServicos(ordem.itens.map((i) => i.servicoId));
+    setEditOrdemPagamento(ordem.metodoPagamento);
+    setEditOrdemObservacoes(ordem.observacoes || "");
+    setEditOrdemMotivo("");
+  }
+
+  function alternarServicoEdicaoOrdem(servicoId: string) {
+    setEditOrdemServicos((atual) =>
+      atual.includes(servicoId)
+        ? atual.filter((id) => id !== servicoId)
+        : [...atual, servicoId]
+    );
+  }
+
+  async function handleSalvarEdicaoOrdem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !usuario || !ordemEditando) return;
+
+    if (editOrdemServicos.length === 0) {
+      exibirToast("A ordem deve ter pelo menos um serviço.", "erro");
+      return;
+    }
+
+    try {
+      await requisitarApi(`/api/ordens/${ordemEditando.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          itens: editOrdemServicos.map((servicoId) => ({ servicoId })),
+          metodoPagamento: editOrdemPagamento,
+          observacoes: editOrdemObservacoes,
+          motivo: editOrdemMotivo,
+        }),
+      });
+
+      setOrdemEditando(null);
+      await carregarDadosGerais(token, usuario);
+      exibirToast("Ordem de serviço editada e registrada na auditoria!");
+    } catch (erro) {
+      exibirToast(
+        erro instanceof Error ? erro.message : "Erro ao editar ordem.",
+        "erro"
+      );
+    }
+  }
+
+  async function handleConfirmarExclusaoOrdem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !usuario || !ordemExcluindo) return;
+
+    try {
+      await requisitarApi(`/api/ordens/${ordemExcluindo.id}`, token, {
+        method: "DELETE",
+        body: JSON.stringify({ motivo: excluirOrdemMotivo }),
+      });
+
+      setOrdemExcluindo(null);
+      setExcluirOrdemMotivo("");
+      await carregarDadosGerais(token, usuario);
+      exibirToast("Ordem excluída logicamente (registrada na auditoria).");
+    } catch (erro) {
+      exibirToast(
+        erro instanceof Error ? erro.message : "Erro ao excluir ordem.",
+        "erro"
+      );
+    }
+  }
+
   if (carregandoSessao) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-300">
@@ -834,7 +945,7 @@ export default function App() {
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              💰 Meu Extrato
+              💰 Extrato
             </button>
             {ehGestorOuAdmin && (
               <>
@@ -861,6 +972,19 @@ export default function App() {
                   ⚙️ Equipe & Catálogo
                 </button>
               </>
+            )}
+            {ehAdministrador && (
+              <button
+                type="button"
+                onClick={() => setAbaAtiva("auditoria")}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  abaAtiva === "auditoria"
+                    ? "bg-amber-500 text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                🛡️ Auditoria
+              </button>
             )}
           </nav>
 
@@ -1180,22 +1304,52 @@ export default function App() {
         )}
 
         {/* =====================================================
-            ABA 2: MEU EXTRATO DETALHADO
+            ABA 2: EXTRATO DETALHADO (COM SELETOR DE BARBEIRO PARA GESTÃO)
            ===================================================== */}
         {abaAtiva === "extrato" && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-slate-100">
                   Extrato de Comissões —{" "}
-                  {meuExtrato?.nomeBarbeiro || usuario.nome}
+                  <span className="text-amber-400">
+                    {meuExtrato?.nomeBarbeiro || usuario.nome}
+                  </span>
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-400">
-                  Consulte todos os serviços executados e valores a receber
+                  {ehGestorOuAdmin
+                    ? "Selecione o barbeiro para consultar o extrato individual ou gerenciar as ordens lançadas"
+                    : "Consulte todos os seus serviços executados e valores a receber no período"}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {ehGestorOuAdmin && (
+                  <select
+                    value={barbeiroSelecionadoObj.id}
+                    onChange={async (e) => {
+                      const novoId = e.target.value;
+                      setBarbeiroOrdemId(novoId);
+                      if (token) {
+                        await carregarExtratoIndividual(
+                          token,
+                          novoId,
+                          meuInicio,
+                          meuFim
+                        );
+                      }
+                    }}
+                    className="rounded-xl bg-slate-950 border border-amber-500/40 px-3 py-2 text-xs sm:text-sm font-semibold text-amber-300 focus:outline-none focus:border-amber-400"
+                  >
+                    {barbeiros.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        👤 {b.nome} ({b.taxaComissaoPadrao}%)
+                        {!b.ativo ? " [Inativo]" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <input
                   type="date"
                   value={meuInicio}
@@ -1299,13 +1453,37 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800">
-                      <span className="text-sm sm:text-base font-extrabold text-emerald-400">
-                        Comissão: + {ordem.valorTotalComissaoBarbeiroFormatado}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Cobrado do cliente: {ordem.valorTotalFormatado}
-                      </span>
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800 gap-2">
+                      <div className="text-right">
+                        <span className="text-sm sm:text-base font-extrabold text-emerald-400 block">
+                          Comissão: + {ordem.valorTotalComissaoBarbeiroFormatado}
+                        </span>
+                        <span className="text-xs text-slate-400 block">
+                          Cobrado do cliente: {ordem.valorTotalFormatado}
+                        </span>
+                      </div>
+
+                      {ehGestorOuAdmin && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEdicaoOrdem(ordem)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 cursor-pointer"
+                          >
+                            ✏️ Editar OS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOrdemExcluindo(ordem);
+                              setExcluirOrdemMotivo("");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-xs font-semibold text-red-300 cursor-pointer"
+                          >
+                            🗑️ Excluir
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1760,39 +1938,213 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* =====================================================
+            ABA 5: AUDITORIA DE ORDENS EDITADAS E EXCLUÍDAS (EXCLUSIVO ADMIN)
+           ===================================================== */}
+        {abaAtiva === "auditoria" && ehAdministrador && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-amber-400">
+                    🛡️ Painel de Auditoria e Ordens Excluídas
+                  </h2>
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-red-500/15 text-red-300 border border-red-500/30">
+                    Visível apenas para Administrador
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                  Rastreamento completo de todas as edições e exclusões lógicas
+                  realizadas por gestores ou administradores
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={auditoriaInicio}
+                  onChange={(e) => setAuditoriaInicio(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs sm:text-sm"
+                />
+                <span className="text-xs text-slate-400">até</span>
+                <input
+                  type="date"
+                  value={auditoriaFim}
+                  onChange={(e) => setAuditoriaFim(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs sm:text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    token &&
+                    carregarAuditoriaAdmin(token, auditoriaInicio, auditoriaFim)
+                  }
+                  className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs sm:text-sm cursor-pointer"
+                >
+                  Consultar Auditoria
+                </button>
+              </div>
+            </div>
+
+            {ordensAuditadas.length === 0 ? (
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 text-center text-sm text-slate-400">
+                Nenhuma ordem de serviço foi editada ou excluída neste período.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {ordensAuditadas.map((ordem) => (
+                  <div
+                    key={ordem.id}
+                    className={`rounded-2xl border p-4 sm:p-5 space-y-3 ${
+                      ordem.excluida
+                        ? "bg-red-950/20 border-red-500/40"
+                        : "bg-slate-950 border-slate-800"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`px-2.5 py-0.5 text-xs font-extrabold rounded-full ${
+                            ordem.excluida
+                              ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                              : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                          }`}
+                        >
+                          {ordem.excluida
+                            ? "🗑️ ORDEM EXCLUÍDA LOGICAMENTE"
+                            : "✏️ ORDEM EDITADA"}
+                        </span>
+                        <strong className="text-sm sm:text-base text-slate-100">
+                          Barbeiro: {ordem.nomeBarbeiro || ordem.barbeiroId}
+                        </strong>
+                        <span className="text-xs text-slate-400">
+                          • Lançada em {formatarDataHora(ordem.realizadoEm)}
+                        </span>
+                      </div>
+
+                      <div className="text-xs sm:text-sm font-bold text-slate-200">
+                        Valor: {ordem.valorTotalFormatado} (Comissão:{" "}
+                        {ordem.valorTotalComissaoBarbeiroFormatado})
+                      </div>
+                    </div>
+
+                    {ordem.excluida && (
+                      <div className="bg-red-950/40 border border-red-500/30 rounded-xl p-3 text-xs space-y-1">
+                        <div className="text-red-200 font-semibold">
+                          Excluída por:{" "}
+                          <strong className="text-white">
+                            {ordem.excluidaPorNome}
+                          </strong>{" "}
+                          em{" "}
+                          {ordem.excluidaEm
+                            ? formatarDataHora(ordem.excluidaEm)
+                            : "-"}
+                        </div>
+                        <div className="text-red-300">
+                          Motivo informado: <em>"{ordem.motivoExclusao}"</em>
+                        </div>
+                      </div>
+                    )}
+
+                    {ordem.historicoAuditoria &&
+                      ordem.historicoAuditoria.length > 0 && (
+                        <div className="space-y-2 pt-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Histórico de Alterações Registradas:
+                          </span>
+                          {ordem.historicoAuditoria.map((reg) => (
+                            <div
+                              key={reg.id}
+                              className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs space-y-1.5"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <span className="font-bold text-amber-300">
+                                    {reg.acao === "EXCLUSAO_LOGICA"
+                                      ? "🗑️ Exclusão Lógica"
+                                      : "✏️ Edição de Ordem"}
+                                  </span>{" "}
+                                  por{" "}
+                                  <strong className="text-slate-100">
+                                    {reg.realizadoPorNome}
+                                  </strong>{" "}
+                                  <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-800 text-slate-300">
+                                    {reg.realizadoPorNivel}
+                                  </span>
+                                </div>
+                                <span className="text-slate-400">
+                                  {formatarDataHora(reg.realizadoEm)}
+                                </span>
+                              </div>
+
+                              <div className="text-slate-200">
+                                <strong>Motivo:</strong> "{reg.motivo}"
+                              </div>
+
+                              <div className="text-slate-400 bg-slate-950 p-2 rounded-lg border border-slate-800/80 space-y-1">
+                                <div>
+                                  <strong className="text-red-300">
+                                    Antes:
+                                  </strong>{" "}
+                                  {reg.resumoAnterior}
+                                </div>
+                                {reg.resumoNovo && (
+                                  <div>
+                                    <strong className="text-emerald-300">
+                                      Depois:
+                                    </strong>{" "}
+                                    {reg.resumoNovo}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* BARRA DE NAVEGAÇÃO INFERIOR FIXA PARA CELULARES (BOTTOM TAB BAR) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-2 py-1.5">
         <div
           className={`grid ${
-            ehGestorOuAdmin ? "grid-cols-4" : "grid-cols-2"
+            ehAdministrador
+              ? "grid-cols-5"
+              : ehGestorOuAdmin
+              ? "grid-cols-4"
+              : "grid-cols-2"
           } gap-1`}
         >
           <button
             type="button"
             onClick={() => setAbaAtiva("lancar")}
-            className={`flex flex-col items-center justify-center py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
               abaAtiva === "lancar"
                 ? "bg-amber-500/15 text-amber-400"
                 : "text-slate-400"
             }`}
           >
-            <span className="text-lg">✂️</span>
-            <span>Lançar OS</span>
+            <span className="text-base">✂️</span>
+            <span>Lançar</span>
           </button>
 
           <button
             type="button"
             onClick={() => setAbaAtiva("extrato")}
-            className={`flex flex-col items-center justify-center py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex flex-col items-center justify-center py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
               abaAtiva === "extrato"
                 ? "bg-amber-500/15 text-amber-400"
                 : "text-slate-400"
             }`}
           >
-            <span className="text-lg">💰</span>
-            <span>Meu Extrato</span>
+            <span className="text-base">💰</span>
+            <span>Extrato</span>
           </button>
 
           {ehGestorOuAdmin && (
@@ -1800,29 +2152,44 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setAbaAtiva("fechamento")}
-                className={`flex flex-col items-center justify-center py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`flex flex-col items-center justify-center py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
                   abaAtiva === "fechamento"
                     ? "bg-amber-500/15 text-amber-400"
                     : "text-slate-400"
                 }`}
               >
-                <span className="text-lg">📊</span>
+                <span className="text-base">📊</span>
                 <span>Fechamento</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setAbaAtiva("gestao")}
-                className={`flex flex-col items-center justify-center py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`flex flex-col items-center justify-center py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
                   abaAtiva === "gestao"
                     ? "bg-amber-500/15 text-amber-400"
                     : "text-slate-400"
                 }`}
               >
-                <span className="text-lg">⚙️</span>
+                <span className="text-base">⚙️</span>
                 <span>Gestão</span>
               </button>
             </>
+          )}
+
+          {ehAdministrador && (
+            <button
+              type="button"
+              onClick={() => setAbaAtiva("auditoria")}
+              className={`flex flex-col items-center justify-center py-2 rounded-xl text-[11px] font-bold transition cursor-pointer ${
+                abaAtiva === "auditoria"
+                  ? "bg-amber-500/15 text-amber-400"
+                  : "text-slate-400"
+              }`}
+            >
+              <span className="text-base">🛡️</span>
+              <span>Auditoria</span>
+            </button>
           )}
         </div>
       </nav>
@@ -2244,6 +2611,192 @@ export default function App() {
                   className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   💾 Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          MODAL: EDITAR ORDEM DE SERVIÇO (COM AUDITORIA)
+         ========================================================= */}
+      {ordemEditando && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-100">
+                  ✏️ Editar Ordem de Serviço
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Esta alteração ficará registrada no histórico de auditoria do
+                  Administrador.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOrdemEditando(null)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarEdicaoOrdem} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Serviços da Ordem
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {servicosAtivos.map((s) => {
+                    const marcado = editOrdemServicos.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => alternarServicoEdicaoOrdem(s.id)}
+                        className={`p-3 rounded-xl border text-left text-xs flex items-center justify-between gap-2 cursor-pointer ${
+                          marcado
+                            ? "bg-amber-500/15 border-amber-400 text-slate-100"
+                            : "bg-slate-950 border-slate-800 text-slate-400"
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold">{s.nome}</div>
+                          <div className="text-amber-400">
+                            {s.precoFormatado}
+                          </div>
+                        </div>
+                        <span>{marcado ? "✓" : ""}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">
+                    Forma de Pagamento
+                  </label>
+                  <select
+                    value={editOrdemPagamento}
+                    onChange={(e) =>
+                      setEditOrdemPagamento(e.target.value as MetodoPagamento)
+                    }
+                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm"
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                    <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                    <option value="DINHEIRO">Dinheiro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">
+                    Observação
+                  </label>
+                  <input
+                    type="text"
+                    value={editOrdemObservacoes}
+                    onChange={(e) => setEditOrdemObservacoes(e.target.value)}
+                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-amber-300 mb-1">
+                  Motivo da Edição (Obrigatório para Auditoria)
+                </label>
+                <input
+                  type="text"
+                  value={editOrdemMotivo}
+                  onChange={(e) => setEditOrdemMotivo(e.target.value)}
+                  placeholder="Ex: Barbeiro selecionou o serviço errado sem querer"
+                  required
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOrdemEditando(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer"
+                >
+                  💾 Salvar Alteração
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          MODAL: EXCLUIR ORDEM DE SERVIÇO LOGICAMENTE (COM AUDITORIA)
+         ========================================================= */}
+      {ordemExcluindo && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-red-400">
+                  🗑️ Excluir Ordem de Serviço
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  A ordem sairá do fechamento e da visão do barbeiro, mas{" "}
+                  <strong className="text-slate-200">
+                    ficará gravada na Auditoria do Administrador
+                  </strong>{" "}
+                  com o seu nome e o motivo abaixo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOrdemExcluindo(null)}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarExclusaoOrdem} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-red-300 mb-1.5">
+                  Motivo da Exclusão (Obrigatório)
+                </label>
+                <input
+                  type="text"
+                  value={excluirOrdemMotivo}
+                  onChange={(e) => setExcluirOrdemMotivo(e.target.value)}
+                  placeholder="Ex: Ordem lançada em duplicidade"
+                  required
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3.5 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrdemExcluindo(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-slate-950 font-bold text-xs cursor-pointer"
+                >
+                  🗑️ Confirmar Exclusão
                 </button>
               </div>
             </form>

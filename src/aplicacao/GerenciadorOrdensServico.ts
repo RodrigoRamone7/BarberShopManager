@@ -6,7 +6,11 @@ import {
   RepositorioPessoa,
   RepositorioServico,
 } from "../repositorios";
-import { exigirPermissaoProprioOuGestao } from "./permissoes";
+import {
+  exigirPermissaoAdministrador,
+  exigirPermissaoGestao,
+  exigirPermissaoProprioOuGestao,
+} from "./permissoes";
 
 export interface LancarOrdemInput {
   barbeiroId?: string;
@@ -17,6 +21,16 @@ export interface LancarOrdemInput {
   metodoPagamento: MetodoPagamento;
   realizadoEm?: Date;
   observacoes?: string;
+}
+
+export interface EditarOrdemInput {
+  itens: Array<{
+    servicoId: string;
+    valorPersonalizado?: number;
+  }>;
+  metodoPagamento: MetodoPagamento;
+  observacoes?: string;
+  motivo: string;
 }
 
 export class GerenciadorOrdensServico {
@@ -67,6 +81,93 @@ export class GerenciadorOrdensServico {
     return ordem;
   }
 
+  public async editarOrdem(
+    solicitante: PayloadToken,
+    ordemId: string,
+    dados: EditarOrdemInput
+  ): Promise<OrdemServico> {
+    exigirPermissaoGestao(solicitante);
+
+    const ordem = await this.repoOrdem.buscarPorId(ordemId);
+    if (!ordem) {
+      throw new Error("Ordem de serviço não encontrada.");
+    }
+
+    const barbeiro = await this.repoPessoa.buscarBarbeiroPorId(
+      ordem.barbeiroId
+    );
+    if (!barbeiro) {
+      throw new Error("Barbeiro da ordem de serviço não encontrado.");
+    }
+
+    const servicosCarregados = await Promise.all(
+      dados.itens.map(async (item) => {
+        const servico = await this.repoServico.buscarPorId(item.servicoId);
+        if (!servico) {
+          throw new Error(`Serviço não encontrado: ${item.servicoId}`);
+        }
+        return {
+          servico,
+          valorPersonalizado:
+            item.valorPersonalizado !== undefined
+              ? new Dinheiro(item.valorPersonalizado)
+              : undefined,
+        };
+      })
+    );
+
+    const pessoaEditora = await this.repoPessoa.buscarPorId(
+      solicitante.pessoaId
+    );
+
+    ordem.editar({
+      idAuditoria: randomUUID(),
+      responsavel: {
+        id: solicitante.pessoaId,
+        nome: pessoaEditora?.nome ?? solicitante.nome,
+        nivelAcesso: solicitante.nivelAcesso,
+      },
+      barbeiro,
+      servicos: servicosCarregados,
+      metodoPagamento: dados.metodoPagamento,
+      observacoes: dados.observacoes,
+      motivo: dados.motivo,
+    });
+
+    await this.repoOrdem.salvar(ordem);
+    return ordem;
+  }
+
+  public async excluirOrdemLogicamente(
+    solicitante: PayloadToken,
+    ordemId: string,
+    motivo: string
+  ): Promise<OrdemServico> {
+    exigirPermissaoGestao(solicitante);
+
+    const ordem = await this.repoOrdem.buscarPorId(ordemId);
+    if (!ordem) {
+      throw new Error("Ordem de serviço não encontrada.");
+    }
+
+    const pessoaResponsavel = await this.repoPessoa.buscarPorId(
+      solicitante.pessoaId
+    );
+
+    ordem.excluirLogicamente({
+      idAuditoria: randomUUID(),
+      responsavel: {
+        id: solicitante.pessoaId,
+        nome: pessoaResponsavel?.nome ?? solicitante.nome,
+        nivelAcesso: solicitante.nivelAcesso,
+      },
+      motivo,
+    });
+
+    await this.repoOrdem.salvar(ordem);
+    return ordem;
+  }
+
   public async listarOrdensDoBarbeiro(
     solicitante: PayloadToken,
     barbeiroId?: string,
@@ -80,6 +181,29 @@ export class GerenciadorOrdensServico {
       barbeiroId: barbeiroAlvoId,
       inicioPeriodo,
       fimPeriodo,
+      incluirExcluidas: false,
     });
+  }
+
+  /**
+   * Exclusivo para o ADMINISTRADOR: retorna todas as ordens que foram
+   * excluídas logicamente ou editadas por gestores/administradores.
+   */
+  public async listarOrdensAuditadasParaAdmin(
+    solicitante: PayloadToken,
+    inicioPeriodo?: Date,
+    fimPeriodo?: Date
+  ): Promise<OrdemServico[]> {
+    exigirPermissaoAdministrador(solicitante);
+
+    const todas = await this.repoOrdem.listar({
+      inicioPeriodo,
+      fimPeriodo,
+      incluirExcluidas: true,
+    });
+
+    return todas.filter(
+      (ordem) => ordem.excluida || ordem.historicoAuditoria.length > 0
+    );
   }
 }

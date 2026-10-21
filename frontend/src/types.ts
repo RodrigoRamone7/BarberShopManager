@@ -46,6 +46,18 @@ export interface ItemOrdemDTO {
   valorBarbeariaFormatado: string;
 }
 
+export interface RegistroAuditoriaOrdemDTO {
+  id: string;
+  acao: "EDICAO" | "EXCLUSAO_LOGICA";
+  realizadoPorId: string;
+  realizadoPorNome: string;
+  realizadoPorNivel: NivelAcesso;
+  realizadoEm: string;
+  motivo: string;
+  resumoAnterior: string;
+  resumoNovo: string | null;
+}
+
 export interface OrdemServicoDTO {
   id: string;
   barbeiroId: string;
@@ -53,6 +65,12 @@ export interface OrdemServicoDTO {
   metodoPagamento: MetodoPagamento;
   realizadoEm: string;
   observacoes: string | null;
+  excluida?: boolean;
+  excluidaEm?: string | null;
+  excluidaPorId?: string | null;
+  excluidaPorNome?: string | null;
+  motivoExclusao?: string | null;
+  historicoAuditoria?: RegistroAuditoriaOrdemDTO[];
   itens: ItemOrdemDTO[];
   valorTotal: number;
   valorTotalFormatado: string;

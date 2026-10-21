@@ -275,8 +275,10 @@ As permissões são verificadas diretamente na camada de aplicação (`src/aplic
 | Cadastrar e Editar Serviços do Catálogo | ❌ | ✅ | ✅ |
 | Listar Serviços Ativos | ✅ | ✅ | ✅ |
 | Lançar Ordem de Serviço | ✅ *(Apenas para si mesmo)* | ✅ *(Qualquer barbeiro)* | ✅ *(Qualquer barbeiro)* |
+| Editar ou Excluir Logicamente uma Ordem de Serviço | ❌ | ✅ *(Exige motivo e gera log)* | ✅ *(Exige motivo e gera log)* |
 | Consultar Extrato de Comissões Individual | ✅ *(Apenas o próprio)* | ✅ *(Qualquer barbeiro)* | ✅ *(Qualquer barbeiro)* |
 | Gerar Fechamento Geral da Barbearia | ❌ | ✅ | ✅ |
+| Visualizar Auditoria de Alterações e Ordens Excluídas | ❌ | ❌ | ✅ *(Exclusivo Admin)* |
 
 ---
 

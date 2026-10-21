@@ -1,6 +1,14 @@
 import { PayloadToken } from "../autenticacao";
 import { NivelAcesso } from "../dominio";
 
+export function exigirPermissaoAdministrador(solicitante: PayloadToken): void {
+  if (solicitante.nivelAcesso !== NivelAcesso.ADMINISTRADOR) {
+    throw new Error(
+      "Acesso negado: esta consulta é exclusiva para o Administrador do sistema."
+    );
+  }
+}
+
 export function exigirPermissaoGestao(solicitante: PayloadToken): void {
   if (
     solicitante.nivelAcesso !== NivelAcesso.ADMINISTRADOR &&

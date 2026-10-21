@@ -15,6 +15,10 @@ export class RepositorioOrdemServicoMemoria implements RepositorioOrdemServico {
   public async listar(filtro?: FiltroOrdemServico): Promise<OrdemServico[]> {
     let resultado = Array.from(this.ordens.values());
 
+    if (!filtro?.incluirExcluidas) {
+      resultado = resultado.filter((ordem) => !ordem.excluida);
+    }
+
     if (filtro?.barbeiroId) {
       resultado = resultado.filter(
         (ordem) => ordem.barbeiroId === filtro.barbeiroId

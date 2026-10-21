@@ -47,15 +47,17 @@ export function serializarItemOrdem(item: ItemOrdemServico) {
 
 export function serializarOrdemServico(
   ordem: OrdemServico,
-  nomeBarbeiro?: string
+  nomeBarbeiro?: string,
+  incluirAuditoria = false
 ) {
-  return {
+  const base = {
     id: ordem.id,
     barbeiroId: ordem.barbeiroId,
     nomeBarbeiro: nomeBarbeiro ?? null,
     metodoPagamento: ordem.metodoPagamento,
     realizadoEm: ordem.realizadoEm.toISOString(),
     observacoes: ordem.observacoes ?? null,
+    excluida: ordem.excluida,
     itens: ordem.itens.map(serializarItemOrdem),
     valorTotal: ordem.valorTotal.valor,
     valorTotalFormatado: ordem.valorTotal.formatar(),
@@ -64,6 +66,29 @@ export function serializarOrdemServico(
       ordem.valorTotalComissaoBarbeiro.formatar(),
     valorTotalBarbearia: ordem.valorTotalBarbearia.valor,
     valorTotalBarbeariaFormatado: ordem.valorTotalBarbearia.formatar(),
+  };
+
+  if (!incluirAuditoria) {
+    return base;
+  }
+
+  return {
+    ...base,
+    excluidaEm: ordem.excluidaEm ? ordem.excluidaEm.toISOString() : null,
+    excluidaPorId: ordem.excluidaPorId ?? null,
+    excluidaPorNome: ordem.excluidaPorNome ?? null,
+    motivoExclusao: ordem.motivoExclusao ?? null,
+    historicoAuditoria: ordem.historicoAuditoria.map((reg) => ({
+      id: reg.id,
+      acao: reg.acao,
+      realizadoPorId: reg.realizadoPorId,
+      realizadoPorNome: reg.realizadoPorNome,
+      realizadoPorNivel: reg.realizadoPorNivel,
+      realizadoEm: reg.realizadoEm.toISOString(),
+      motivo: reg.motivo,
+      resumoAnterior: reg.resumoAnterior,
+      resumoNovo: reg.resumoNovo ?? null,
+    })),
   };
 }
 

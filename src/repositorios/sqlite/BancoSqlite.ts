@@ -66,6 +66,11 @@ export class BancoSqlite {
         metodo_pagamento TEXT NOT NULL,
         realizado_em TEXT NOT NULL,
         observacoes TEXT,
+        excluida INTEGER NOT NULL DEFAULT 0,
+        excluida_em TEXT,
+        excluida_por_id TEXT,
+        excluida_por_nome TEXT,
+        motivo_exclusao TEXT,
         FOREIGN KEY (barbeiro_id) REFERENCES pessoas(id)
       );
 
@@ -76,6 +81,20 @@ export class BancoSqlite {
         nome_servico_historico TEXT NOT NULL,
         valor_cobrado REAL NOT NULL,
         taxa_comissao_aplicada REAL NOT NULL,
+        FOREIGN KEY (ordem_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS auditoria_ordens_servico (
+        id TEXT PRIMARY KEY,
+        ordem_id TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        realizado_por_id TEXT NOT NULL,
+        realizado_por_nome TEXT NOT NULL,
+        realizado_por_nivel TEXT NOT NULL,
+        realizado_em TEXT NOT NULL,
+        motivo TEXT NOT NULL,
+        resumo_anterior TEXT NOT NULL,
+        resumo_novo TEXT,
         FOREIGN KEY (ordem_id) REFERENCES ordens_servico(id) ON DELETE CASCADE
       );
 
@@ -94,6 +113,22 @@ export class BancoSqlite {
         assinatura_integridade TEXT NOT NULL
       );
     `);
+
+    // Migração segura caso o arquivo SQLite já existisse antes das colunas de exclusão lógica
+    const colunasNovas = [
+      "excluida INTEGER NOT NULL DEFAULT 0",
+      "excluida_em TEXT",
+      "excluida_por_id TEXT",
+      "excluida_por_nome TEXT",
+      "motivo_exclusao TEXT",
+    ];
+    for (const defColuna of colunasNovas) {
+      try {
+        this.db.exec(`ALTER TABLE ordens_servico ADD COLUMN ${defColuna};`);
+      } catch {
+        // Coluna já existe
+      }
+    }
   }
 
   public fechar(): void {

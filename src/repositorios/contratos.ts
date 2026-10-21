@@ -25,6 +25,7 @@ export interface FiltroOrdemServico {
   barbeiroId?: string;
   inicioPeriodo?: Date;
   fimPeriodo?: Date;
+  incluirExcluidas?: boolean;
 }
 
 export interface RepositorioOrdemServico {

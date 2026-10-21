@@ -197,6 +197,9 @@ export async function criarAplicacaoWeb(opcoes?: {
     NivelAcesso.ADMINISTRADOR,
     NivelAcesso.GESTOR,
   ]);
+  const apenasAdmin = criarMiddlewareAutenticacao(casoDeUsoAuth, [
+    NivelAcesso.ADMINISTRADOR,
+  ]);
 
   const exigirLicencaEscrita = (
     _req: Request,
@@ -613,6 +616,116 @@ export async function criarAplicacaoWeb(opcoes?: {
       tratarErroHttp(res, erro);
     }
   });
+
+  app.get(
+    "/api/ordens/auditoria",
+    apenasAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { inicioPeriodo, fimPeriodo } = extrairIntervaloDatas(req.query);
+        const ordensAuditadas =
+          await gerenciadorOrdens.listarOrdensAuditadasParaAdmin(
+            req.usuario!,
+            inicioPeriodo,
+            fimPeriodo
+          );
+
+        const barbeiros = await repoPessoa.listarBarbeiros(false);
+        const mapaNomes = new Map(barbeiros.map((b) => [b.id, b.nome]));
+
+        res.json(
+          ordensAuditadas
+            .slice()
+            .reverse()
+            .map((ordem) =>
+              serializarOrdemServico(
+                ordem,
+                mapaNomes.get(ordem.barbeiroId),
+                true
+              )
+            )
+        );
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
+    }
+  );
+
+  app.patch(
+    "/api/ordens/:id",
+    apenasGestao,
+    exigirLicencaEscrita,
+    async (req: Request, res: Response) => {
+      try {
+        const { itens, metodoPagamento, observacoes, motivo } = req.body ?? {};
+        if (!Array.isArray(itens) || itens.length === 0) {
+          res.status(400).json({
+            erro: "A ordem de serviço deve conter pelo menos um serviço.",
+          });
+          return;
+        }
+
+        const ordemAtualizada = await gerenciadorOrdens.editarOrdem(
+          req.usuario!,
+          String(req.params.id),
+          {
+            itens: itens.map((item: Record<string, unknown>) => ({
+              servicoId: String(item.servicoId ?? ""),
+              valorPersonalizado:
+                item.valorPersonalizado !== undefined &&
+                item.valorPersonalizado !== null &&
+                item.valorPersonalizado !== ""
+                  ? Number(item.valorPersonalizado)
+                  : undefined,
+            })),
+            metodoPagamento:
+              (metodoPagamento as MetodoPagamento) ?? MetodoPagamento.PIX,
+            observacoes:
+              observacoes !== undefined ? String(observacoes) : undefined,
+            motivo: String(motivo ?? ""),
+          }
+        );
+
+        const barbeiro = await repoPessoa.buscarBarbeiroPorId(
+          ordemAtualizada.barbeiroId
+        );
+        res.json(
+          serializarOrdemServico(ordemAtualizada, barbeiro?.nome ?? undefined)
+        );
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
+    }
+  );
+
+  app.delete(
+    "/api/ordens/:id",
+    apenasGestao,
+    exigirLicencaEscrita,
+    async (req: Request, res: Response) => {
+      try {
+        const { motivo } = req.body ?? {};
+        const ordemExcluida = await gerenciadorOrdens.excluirOrdemLogicamente(
+          req.usuario!,
+          String(req.params.id),
+          String(motivo ?? "")
+        );
+
+        const barbeiro = await repoPessoa.buscarBarbeiroPorId(
+          ordemExcluida.barbeiroId
+        );
+        res.json(
+          serializarOrdemServico(
+            ordemExcluida,
+            barbeiro?.nome ?? undefined,
+            req.usuario!.nivelAcesso === NivelAcesso.ADMINISTRADOR
+          )
+        );
+      } catch (erro) {
+        tratarErroHttp(res, erro);
+      }
+    }
+  );
 
   // ==========================================
   // ROTAS DE FECHAMENTO MENSAL (/api/fechamento)
